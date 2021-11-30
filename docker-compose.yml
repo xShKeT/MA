@@ -1,0 +1,105 @@
+version: '3.7'
+
+networks:
+    yourtar:
+      external:
+        name: yourtar
+
+services:
+
+  nginx:
+    container_name: nginx
+    image: nginx:latest
+    restart: always
+    build:
+      ./config/nginx
+    ports: 
+      - "8080:80"
+    networks: 
+      - yourtar
+    volumes:
+      - ./config/nginx/:/etc/nginx/conf.d/
+      - ./placeholder/index.html:/var/www/placeholder/index.html
+    links:
+      - laravel
+      - laravel-copy
+
+  laravel:
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor/
+    build: .
+    networks: 
+      - yourtar
+    command: php -S laravel:81 -t public
+    restart: always
+    ports:
+      - "8081:81"
+    expose: 
+      - "81"
+
+  laravel-copy:
+    volumes:
+      - .:/var/www/html1
+      - /var/www/html1/vendor/
+    build: ./laravel-copy
+    networks: 
+      - yourtar
+    command: php -S laravel-copy:82 -t public
+    restart: always
+    ports:
+      - "8082:82"
+    expose: 
+      - "82"
+      
+  rabbitmq:
+   image: rabbitmq:3-management
+   container_name: rabbitmq
+   networks:
+     - yourtar
+   environment:
+     RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+     RABBITMQ_DEFAULT_USER: "admin"
+     RABBITMQ_DEFAULT_PASS: "13121994"
+     RABBITMQ_DEFAULT_VHOST: "/"
+   ports:
+     - "5672:5672"
+     - "15672:15672"
+
+  database:
+    container_name: pgsql1-database
+    image: postgres
+    networks: 
+      - yourtar
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=task
+    ports:
+      - 5432:5432
+
+  flyway:
+    container_name: pgsql1-flyway
+    image: flyway/flyway
+    networks: 
+      - yourtar
+    command: -url=jdbc:postgresql://pgsql1-database:5432/task -schemas=public -user=postgres -password=postgres -connectRetries=60 migrate
+    volumes:
+      - ./migrations:/flyway/sql
+    depends_on:
+      - database
+
+  pgadmin:
+    container_name: pgadmin_container
+    image: dpage/pgadmin4
+    networks: 
+      - yourtar
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - ./.pgadmin:/root/.pgadmin
+    ports:
+      - ${PGADMIN_PORT:-5050}:90
+    restart: unless-stopped
